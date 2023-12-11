@@ -3,6 +3,7 @@
 Share easily the link to a specific line of code in a repository you are working on, while browsing it in Neovim.
 
 `<leader>gu` -> get the link to the URL of the original repository of the code line under your cursor
+
 `<leader>go` -> open in the browser the URL directly to the code line under your cursor.
 
 ## Configuration with LazyVim
