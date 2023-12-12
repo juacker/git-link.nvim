@@ -1,6 +1,8 @@
 # Git-Link for NeoVim
 
-Share easily the link to a specific line of code in a repository you are working on, while browsing it in Neovim.
+Quickly jump from a line of code in Neovim to the same line of code in the browser, assuming the remote from your local repository is on github, gitlab, etc.
+Useful when trying to share a link to a specific line of code with your colleagues.
+
 
 `<leader>gu` -> get the link to the URL of the original repository of the code line under your cursor
 
