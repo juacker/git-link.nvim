@@ -17,7 +17,7 @@ Useful for sharing a link to a line of code with your colleagues.
       {
         "<leader>gu",
         function() require("git-link.main").copy_line_url() end,
-        desc = "copy code line url",
+        desc = "copy code line link to clipboard",
       },
       {
         "<leader>go",
