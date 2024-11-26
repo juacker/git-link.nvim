@@ -1,3 +1,5 @@
+local config = require("git-link.config")
+
 local function copy_to_clipboard(text)
 	vim.fn.setreg("+", text)
 end
@@ -7,22 +9,26 @@ local function open_url_in_browser(url)
 	vim.fn.jobstart(command, { detach = true, cwd = vim.fn.getcwd() })
 end
 
+local function get_current_branch()
+	local branch = vim.fn.trim(vim.fn.system("git rev-parse --abbrev-ref HEAD"))
+	return branch ~= "" and branch or "master"
+end
+
 local function get_remote_url()
 	local remote_url = vim.fn.trim(vim.fn.system("git config --get remote.origin.url"))
 
-	if remote_url:match("^ssh://") then
-		local domain = remote_url:match("ssh://([^/]+)")
-		local gitconfig_url = vim.fn.trim(vim.fn.system("git config --get-urlmatch url.insteadof ssh://" .. domain))
+	local rules = config.get_rules()
 
-		if gitconfig_url ~= "" then
-			local repo_path = remote_url:match(domain .. "/(.+)%.git$")
-			if repo_path then
-				return gitconfig_url:gsub("%.git$", "") .. repo_path
-			end
+	-- Apply URL rewrite rules
+	for _, rule in ipairs(rules) do
+		if remote_url:match(rule.pattern) then
+			local final_url = remote_url:gsub(rule.pattern, rule.replace):gsub("%.git$", "")
+			return final_url, rule.format_url
 		end
 	end
 
-	return remote_url:gsub("git@([^:]+):", "https://%1/"):gsub("ssh://git@([^:/]+)/", "https://%1/"):gsub("%.git$", "")
+	local default_rule = config.default_rules[1]
+	return remote_url:gsub("%.git$", ""), default_rule.format_url
 end
 
 local function get_current_line_url()
@@ -30,19 +36,33 @@ local function get_current_line_url()
 	local filename = vim.fn.expand("%:p"):gsub("^" .. git_root .. "/", "")
 	local linenr = vim.api.nvim_win_get_cursor(0)[1]
 	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
-	local remote_url = get_remote_url()
+	local remote_url, format_url = get_remote_url()
+	local branch = get_current_branch()
 
-	return remote_url and string.format("%s/blob/master/%s#L%d", remote_url, relative_filename, linenr) or nil
+	if remote_url then
+		local params = {
+			branch = branch,
+			file_path = relative_filename,
+			line_number = linenr,
+		}
+		return format_url(remote_url, params)
+	end
+
+	return nil
 end
 
 local function copy_line_url()
 	local remote_url = get_current_line_url()
-	if remote_url then copy_to_clipboard(remote_url) end
+	if remote_url then
+		copy_to_clipboard(remote_url)
+	end
 end
 
 local function open_line_url()
 	local remote_url = get_current_line_url()
-	if remote_url then open_url_in_browser(remote_url) end
+	if remote_url then
+		open_url_in_browser(remote_url)
+	end
 end
 
 return {
