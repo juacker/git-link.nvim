@@ -36,10 +36,25 @@ local function get_remote_url()
 	return remote_url:gsub("%.git$", ""), default_rule.format_url
 end
 
-local function get_current_line_url()
+local function get_line_range()
+	local vstart = vim.fn.getpos("v")
+	local vcurrent = vim.fn.getcurpos()
+
+	if vstart[2] > 0 then
+		if vstart[2] <= vcurrent[2] then
+			return vstart[2], vcurrent[2]
+		else
+			return vcurrent[2], vstart[2]
+		end
+	end
+
+	return vcurrent[2], vcurrent[2]
+end
+
+local function get_url()
 	local git_root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
 	local filename = vim.fn.expand("%:p"):gsub("^" .. git_root .. "/", "")
-	local linenr = vim.api.nvim_win_get_cursor(0)[1]
+	local start_line, end_line = get_line_range()
 	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
 	local remote_url, format_url = get_remote_url()
 	local branch = get_current_branch()
@@ -48,23 +63,23 @@ local function get_current_line_url()
 		local params = {
 			branch = branch,
 			file_path = relative_filename,
-			line_number = linenr,
+			start_line = start_line,
+			end_line = end_line,
 		}
 		return format_url(remote_url, params)
 	end
-
 	return nil
 end
 
 local function copy_line_url()
-	local remote_url = get_current_line_url()
+	local remote_url = get_url()
 	if remote_url then
 		copy_to_clipboard(remote_url)
 	end
 end
 
 local function open_line_url()
-	local remote_url = get_current_line_url()
+	local remote_url = get_url()
 	if remote_url then
 		open_url_in_browser(remote_url)
 	end
