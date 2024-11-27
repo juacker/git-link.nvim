@@ -114,4 +114,4 @@ You can configure as many rules as you need. Here is an example of a configurati
 
 ## Demo
 
-[Git-Link Demo](https://github.com/juacker/git-link.nvim/assets/2930882/caadb465-e240-4fcc-ae59-9445b8184fbb)
+[Git-Link Demo](https://github.com/user-attachments/assets/276635a4-77d7-4fb9-a2f3-9e1af423e99d)
