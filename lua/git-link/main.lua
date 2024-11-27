@@ -14,8 +14,9 @@ local function get_current_branch()
 	if vim.v.shell_error ~= 0 then
 		return "master" -- Default to "master" if the command fails
 	end
-	local branch = vim.fn.trim(output):gsub("^origin/", "")
-	return branch ~= "" and branch or "master"
+	local branch = vim.fn.trim(output)
+	local _, branch_name = branch:match("^([^/]+)/(.+)$")
+	return branch_name or "master" -- Return branch name without remote prefix, or "master" if not found
 end
 
 local function get_remote_url()
