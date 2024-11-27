@@ -10,7 +10,11 @@ local function open_url_in_browser(url)
 end
 
 local function get_current_branch()
-	local branch = vim.fn.trim(vim.fn.system("git rev-parse --abbrev-ref HEAD"))
+	local output = vim.fn.system("git rev-parse --abbrev-ref @{u} 2>/dev/null")
+	if vim.v.shell_error ~= 0 then
+		return "master" -- Default to "master" if the command fails
+	end
+	local branch = vim.fn.trim(output):gsub("^origin/", "")
 	return branch ~= "" and branch or "master"
 end
 
