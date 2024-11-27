@@ -20,6 +20,51 @@ To use Git-Link with [LazyVim](https://github.com/LazyVim/LazyVim), add the foll
 ```lua
 {
   "juacker/git-link.nvim",
+  keys = {
+    {
+      "<leader>gu",
+      function() require("git-link.main").copy_line_url() end,
+      desc = "Copy code line URL to clipboard",
+    },
+    {
+      "<leader>go",
+      function() require("git-link.main").open_line_url() end,
+      desc = "Open code line in browser",
+    },
+  },
+}
+```
+
+### Default URL Rules
+
+The plugin comes with built-in support for the following Git remote URL formats:
+
+- HTTPS URLs (e.g., `https://github.com/user/repo`)
+- Git SSH URLs (e.g., `git@github.com:user/repo`)
+- SSH protocol URLs (e.g., `ssh://git@github.com/user/repo`)
+
+These URLs are automatically converted to browser-friendly formats for GitHub, GitLab, and similar platforms.
+
+### Custom URL Rules
+
+You can add custom URL rules to support different Git hosting platforms. Each rule consists of:
+
+- `pattern`: A Lua pattern to match your Git remote URL format
+- `replace`: A template to convert the URL to HTTPS format
+- `format_url`: A function that generates the final browser URL using:
+  - `base_url`: The resulting URL after replacing the pattern
+  - `params`: A table containing:
+    - `branch`: Current git branch
+    - `file_path`: Path to the file
+    - `line_number`: Current line number
+
+Custom rules are processed before default rules, allowing you to override the default behavior for specific repositories.
+
+You can configure as many rules as you need. Here is an example of a configuration adding one rule:
+
+```lua
+{
+  "juacker/git-link.nvim",
   opts = {
     -- Optional: Add custom URL rules for your Git hosting platform
     url_rules = {
@@ -53,31 +98,6 @@ To use Git-Link with [LazyVim](https://github.com/LazyVim/LazyVim), add the foll
   },
 }
 ```
-
-### Default URL Rules
-
-The plugin comes with built-in support for the following Git remote URL formats:
-
-- HTTPS URLs (e.g., `https://github.com/user/repo`)
-- Git SSH URLs (e.g., `git@github.com:user/repo`)
-- SSH protocol URLs (e.g., `ssh://git@github.com/user/repo`)
-
-These URLs are automatically converted to browser-friendly formats for GitHub, GitLab, and similar platforms.
-
-### Custom URL Rules
-
-You can add custom URL rules to support different Git hosting platforms. Each rule consists of:
-
-- `pattern`: A Lua pattern to match your Git remote URL format
-- `replace`: A template to convert the URL to HTTPS format
-- `format_url`: A function that generates the final browser URL using:
-  - `base_url`: The converted repository URL
-  - `params`: A table containing:
-    - `branch`: Current git branch
-    - `file_path`: Path to the file
-    - `line_number`: Current line number
-
-Custom rules are processed before default rules, allowing you to override the default behavior for specific repositories.
 
 ## Usage
 
