@@ -37,12 +37,18 @@ local function get_remote_url()
 end
 
 local function get_line_range()
-	if vim.fn.mode() == "v" or vim.fn.mode() == "V" or vim.fn.mode() == "\22" then
-		return vim.fn.line("'<"), vim.fn.line("'>")
-	else
-		local current_line = vim.api.nvim_win_get_cursor(0)[1]
-		return current_line, current_line
+	local vstart = vim.fn.getpos("v")
+	local vcurrent = vim.fn.getcurpos()
+
+	if vstart[2] > 0 then
+		if vstart[2] <= vcurrent[2] then
+			return vstart[2], vcurrent[2]
+		else
+			return vcurrent[2], vstart[2]
+		end
 	end
+
+	return vcurrent[2], vcurrent[2]
 end
 
 local function get_url()
