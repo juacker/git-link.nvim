@@ -1,10 +1,10 @@
 # Git-Link for NeoVim
 
-**Git-Link for NeoVim** allows you to quickly navigate from a line of code in Neovim to the corresponding line in a browser, assuming your repository's remote is hosted on platforms like GitHub, GitLab, etc. This plugin is especially useful when you need to share a link to a specific line of code with your colleagues.
+**Git-Link for NeoVim** allows you to quickly navigate from a line of code in Neovim to the corresponding line in a browser, assuming your repository's remote is hosted on platforms like GitHub, GitLab, etc. This plugin is especially useful when you need to share a link to a specific line of code (or line range) with your colleagues.
 
 ## Features
 
-- **Get a sharable URL**: Easily generate a link to the line of code under your cursor, ready to share.
+- **Get a sharable URL**: Easily generate a link to the line of code under your cursor, ready to share. You can also share a link to a line range, if you select a visual block.
 - **Open in Browser**: Instantly open the browser and navigate to the specific line of code under your cursor.
 - **Configurable URL Rules**: Support for custom Git hosting platforms through configurable URL rewriting rules.
 
@@ -24,12 +24,14 @@ To use Git-Link with [LazyVim](https://github.com/LazyVim/LazyVim), add the foll
     {
       "<leader>gu",
       function() require("git-link.main").copy_line_url() end,
-      desc = "Copy code line URL to clipboard",
+      desc = "Copy code link to clipboard",
+      mode = { "n", "x" }
     },
     {
       "<leader>go",
       function() require("git-link.main").open_line_url() end,
-      desc = "Open code line in browser",
+      desc = "Open code link in browser",
+      mode = { "n", "x" }
     },
   },
 }
@@ -48,7 +50,6 @@ These URLs are automatically converted to browser-friendly formats for GitHub, G
 ### Custom URL Rules
 
 You can add custom URL rules to support different Git hosting platforms. Each rule consists of:
-
 - `pattern`: A Lua pattern to match your Git remote URL format
 - `replace`: A template to convert the URL to HTTPS format
 - `format_url`: A function that generates the final browser URL using:
@@ -56,9 +57,12 @@ You can add custom URL rules to support different Git hosting platforms. Each ru
   - `params`: A table containing:
     - `branch`: Current git branch
     - `file_path`: Path to the file
-    - `line_number`: Current line number
+    - `start_line`: Starting line number
+    - `end_line`: Ending line number (same as start_line for single line links)
 
 Custom rules are processed before default rules, allowing you to override the default behavior for specific repositories.
+
+As you can see in the example below, the `format_url` function must/can/should handle both single line and line range permalinks.
 
 You can configure as many rules as you need. Here is an example of a configuration adding one rule:
 
@@ -73,13 +77,14 @@ You can configure as many rules as you need. Here is an example of a configurati
         pattern = "^ssh://([^:]+):29418/(.+)$",
         replace = "https://%1/plugins/gitiles/%2",
         format_url = function(base_url, params)
-          -- Generates Gerrit Gitiles URLs: https://host/plugins/gitiles/project/+/refs/heads/branch/path#number
-          return string.format("%s/+/refs/heads/%s/%s#%d",
-            base_url,
-            params.branch,
-            params.file_path,
-            params.line_number
-          )
+          -- For single line
+          if params.start_line == params.end_line then
+            -- Generates Gerrit Gitiles URLs: https://host/plugins/gitiles/project/+/refs/heads/branch/path#number
+            return string.format("%s/+/refs/heads/%s/%s#%d", base_url, params.branch, params.file_path, params.start_line)
+          else
+            -- For line ranges - Gerrit uses comma to separate line ranges
+            return string.format("%s/+/refs/heads/%s/%s#%d,%d", base_url, params.branch, params.file_path, params.start_line, params.end_line)
+          end
         end,
       },
     },
@@ -88,12 +93,14 @@ You can configure as many rules as you need. Here is an example of a configurati
     {
       "<leader>gu",
       function() require("git-link.main").copy_line_url() end,
-      desc = "Copy code line URL to clipboard",
+      desc = "Copy code link to clipboard",
+      mode = { "n", "x" }
     },
     {
       "<leader>go",
       function() require("git-link.main").open_line_url() end,
-      desc = "Open code line in browser",
+      desc = "Open code link in browser",
+      mode = { "n", "x" }
     },
   },
 }
