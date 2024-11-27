@@ -109,7 +109,7 @@ You can configure as many rules as you need. Here is an example of a configurati
 ## Usage
 
 1. Place the cursor on the desired line of code or select the visual block you want to share.
-2. Use `<leader>gu` to copy the link URL of that line to your clipboard.
+2. Use `<leader>gu` to copy the link URL to your clipboard.
 3. Alternatively, use `<leader>go` to open the link directly in your browser.
 
 ## Demo
