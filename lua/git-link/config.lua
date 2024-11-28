@@ -7,24 +7,14 @@ local function create_config()
 			pattern = "^https?://([^/]+)/(.+)$",
 			replace = "https://%1/%2",
 			format_url = function(base_url, params)
+				local single_line_url =
+					string.format("%s/blob/%s/%s#L%d", base_url, params.branch, params.file_path, params.start_line)
+
 				if params.start_line == params.end_line then
-					return string.format(
-						"%s/blob/%s/%s#L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line
-					)
-				else
-					return string.format(
-						"%s/blob/%s/%s#L%d-L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line,
-						params.end_line
-					)
+					return single_line_url
 				end
+
+				return string.format("%s-L%d", single_line_url, params.end_line)
 			end,
 		},
 		-- Handles SSH URLs with git@ format (input: git@host:org/repo)
@@ -33,24 +23,14 @@ local function create_config()
 			pattern = "^git@([^:]+):",
 			replace = "https://%1/",
 			format_url = function(base_url, params)
+				local single_line_url =
+					string.format("%s/blob/%s/%s#L%d", base_url, params.branch, params.file_path, params.start_line)
+
 				if params.start_line == params.end_line then
-					return string.format(
-						"%s/blob/%s/%s#L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line
-					)
-				else
-					return string.format(
-						"%s/blob/%s/%s#L%d-L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line,
-						params.end_line
-					)
+					return single_line_url
 				end
+
+				return string.format("%s-L%d", single_line_url, params.end_line)
 			end,
 		},
 		-- Handles SSH protocol URLs (input: ssh://git@host/org/repo)
@@ -59,24 +39,14 @@ local function create_config()
 			pattern = "^ssh://git@([^:/]+)/",
 			replace = "https://%1/",
 			format_url = function(base_url, params)
+				local single_line_url =
+					string.format("%s/blob/%s/%s#L%d", base_url, params.branch, params.file_path, params.start_line)
+
 				if params.start_line == params.end_line then
-					return string.format(
-						"%s/blob/%s/%s#L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line
-					)
-				else
-					return string.format(
-						"%s/blob/%s/%s#L%d-L%d",
-						base_url,
-						params.branch,
-						params.file_path,
-						params.start_line,
-						params.end_line
-					)
+					return single_line_url
 				end
+
+				return string.format("%s-L%d", single_line_url, params.end_line)
 			end,
 		},
 	}
