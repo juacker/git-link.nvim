@@ -10,7 +10,12 @@
 
 ## Installation and Configuration
 
-This plugin does not set any default keymaps. You'll need to configure your own keymaps to use its functionality. Below are examples for different setups:
+This plugin does not set any default keymaps, however, in the following examples we set these:
+
+- `<leader>gu`: Copies the URL of the line of code under your cursor to your clipboard.
+- `<leader>go`: Opens the browser and navigates directly to the line of code under your cursor.
+
+Below are examples for different setups:
 
 ### With LazyVim
 
