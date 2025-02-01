@@ -8,14 +8,11 @@
 - **Open in Browser**: Instantly open the browser and navigate to the specific line of code under your cursor.
 - **Configurable URL Rules**: Support for custom Git hosting platforms through configurable URL rewriting rules.
 
-### Key Mappings
-
-- `<leader>gu`: Copies the URL of the line of code under your cursor to your clipboard.
-- `<leader>go`: Opens the browser and navigates directly to the line of code under your cursor.
-
 ## Installation and Configuration
 
-To use Git-Link with [LazyVim](https://github.com/LazyVim/LazyVim), add the following configuration to your Neovim setup:
+This plugin does not set any default keymaps. You'll need to configure your own keymaps to use its functionality. Below are examples for different setups:
+
+### With LazyVim
 
 ```lua
 {
@@ -35,6 +32,31 @@ To use Git-Link with [LazyVim](https://github.com/LazyVim/LazyVim), add the foll
     },
   },
 }
+```
+
+### With Packer
+
+```lua
+use {
+  'juacker/git-link.nvim',
+  config = function()
+    -- Set up your keymaps
+    vim.keymap.set('n', '<leader>gu', function() require("git-link.main").copy_line_url() end)
+    vim.keymap.set('n', '<leader>go', function() require("git-link.main").open_line_url() end)
+    vim.keymap.set('x', '<leader>gu', function() require("git-link.main").copy_line_url() end)
+    vim.keymap.set('x', '<leader>go', function() require("git-link.main").open_line_url() end)
+  end
+}
+```
+
+### Manual Setup
+
+```lua
+-- In your init.lua
+vim.keymap.set('n', '<leader>gu', function() require("git-link.main").copy_line_url() end)
+vim.keymap.set('n', '<leader>go', function() require("git-link.main").open_line_url() end)
+vim.keymap.set('x', '<leader>gu', function() require("git-link.main").copy_line_url() end)
+vim.keymap.set('x', '<leader>go', function() require("git-link.main").open_line_url() end)
 ```
 
 ### Default URL Rules
@@ -62,9 +84,7 @@ You can add custom URL rules to support different Git hosting platforms. Each ru
 
 Custom rules are processed before default rules, allowing you to override the default behavior for specific repositories.
 
-As you can see in the example below, the `format_url` function must/can/should handle both single line and line range permalinks.
-
-You can configure as many rules as you need. Here is an example of a configuration adding one rule:
+Here is an example of configuration with a custom URL rule:
 
 ```lua
 {
@@ -109,8 +129,8 @@ You can configure as many rules as you need. Here is an example of a configurati
 ## Usage
 
 1. Place the cursor on the desired line of code or select the visual block you want to share.
-2. Use `<leader>gu` to copy the link URL to your clipboard.
-3. Alternatively, use `<leader>go` to open the link directly in your browser.
+2. Use your configured keybinding to copy the link URL to your clipboard.
+3. Alternatively, use your configured keybinding to open the link directly in your browser.
 
 ## Demo
 
