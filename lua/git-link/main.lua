@@ -12,6 +12,7 @@ end
 local function get_current_branch()
 	local output = vim.fn.system("git rev-parse --abbrev-ref @{u} 2>/dev/null")
 	if vim.v.shell_error ~= 0 then
+		vim.notify("Could not determine current branch", vim.log.levels.WARN)
 		return "master" -- Default to "master" if the command fails
 	end
 	local branch = vim.fn.trim(output)
@@ -21,6 +22,10 @@ end
 
 local function get_remote_url()
 	local remote_url = vim.fn.trim(vim.fn.system("git config --get remote.origin.url"))
+	if vim.v.shell_error ~= 0 then
+		vim.notify("Not a git repository or no remote 'origin' found", vim.log.levels.ERROR)
+		return nil
+	end
 
 	local rules = config.get_rules()
 
@@ -32,56 +37,71 @@ local function get_remote_url()
 		end
 	end
 
-	local default_rule = config.default_rules[1]
-	return remote_url:gsub("%.git$", ""), default_rule.format_url
-end
-
-local function get_line_range()
-	local vstart = vim.fn.getpos("v")
-	local vcurrent = vim.fn.getcurpos()
-
-	if vstart[2] > 0 then
-		if vstart[2] <= vcurrent[2] then
-			return vstart[2], vcurrent[2]
-		else
-			return vcurrent[2], vstart[2]
-		end
-	end
-
-	return vcurrent[2], vcurrent[2]
-end
-
-local function get_url()
-	local git_root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
-	local filename = vim.fn.expand("%:p"):gsub("^" .. git_root .. "/", "")
-	local start_line, end_line = get_line_range()
-	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
-	local remote_url, format_url = get_remote_url()
-	local branch = get_current_branch()
-
-	if remote_url then
-		local params = {
-			branch = branch,
-			file_path = relative_filename,
-			start_line = start_line,
-			end_line = end_line,
-		}
-		return format_url(remote_url, params)
-	end
+	-- If no rule matches, return nil
+	vim.notify("No matching URL rule found for remote: " .. remote_url, vim.log.levels.ERROR)
 	return nil
 end
 
+local function get_line_range()
+	local mode = vim.fn.mode()
+	if mode:match("[vV]") then
+		local vstart = vim.fn.getpos("v")
+		local vcurrent = vim.fn.getcurpos()
+		return math.min(vstart[2], vcurrent[2]), math.max(vstart[2], vcurrent[2])
+	end
+
+	local current = vim.fn.getcurpos()
+	return current[2], current[2]
+end
+
+local function get_url()
+	-- Check if we're in a git repository
+	local git_root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
+	if vim.v.shell_error ~= 0 then
+		vim.notify("Not a git repository", vim.log.levels.ERROR)
+		return nil
+	end
+
+	local filename = vim.fn.expand("%:p"):gsub("^" .. git_root .. "/", "")
+
+	-- Check if file is tracked by git
+	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
+	if vim.v.shell_error ~= 0 or relative_filename == "" then
+		vim.notify("File is not tracked by git", vim.log.levels.ERROR)
+		return nil
+	end
+
+	local remote_url, format_url = get_remote_url()
+	if not remote_url or not format_url then
+		-- get_remote_url already showed an error
+		return nil
+	end
+
+	local branch = get_current_branch()
+	local start_line, end_line = get_line_range()
+
+	local params = {
+		branch = branch,
+		file_path = relative_filename,
+		start_line = start_line,
+		end_line = end_line,
+	}
+	return format_url(remote_url, params)
+end
+
 local function copy_line_url()
-	local remote_url = get_url()
-	if remote_url then
-		copy_to_clipboard(remote_url)
+	local url = get_url()
+	if url then
+		copy_to_clipboard(url)
+		vim.notify("Git URL copied to clipboard", vim.log.levels.INFO)
 	end
 end
 
 local function open_line_url()
-	local remote_url = get_url()
-	if remote_url then
-		open_url_in_browser(remote_url)
+	local url = get_url()
+	if url then
+		open_url_in_browser(url)
+		vim.notify("Opening git URL in browser", vim.log.levels.INFO)
 	end
 end
 

@@ -56,8 +56,12 @@ local function create_config()
 	local config = {}
 
 	function config.setup(opts)
+		user_rules = {}
+
 		if opts and opts.url_rules then
-			user_rules = opts.url_rules
+			for _, rule in ipairs(opts.url_rules) do
+				table.insert(user_rules, rule)
+			end
 		end
 	end
 
@@ -74,6 +78,11 @@ local function create_config()
 
 	function config.get_default_rule()
 		return default_rules[1]
+	end
+
+	-- Add reset function for tests
+	function config._reset()
+		user_rules = {}
 	end
 
 	return config
