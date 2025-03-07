@@ -80,13 +80,15 @@ local function get_line_range()
 end
 
 local function get_url()
-	local git_root = vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
+	-- Call to git rev-parse as a way to ensure this is a valid git repo
+	vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
 	if vim.v.shell_error ~= 0 then
 		vim.notify("Not a git repository", vim.log.levels.ERROR)
 		return nil
 	end
 
-	local filename = vim.fn.expand("%:p"):gsub("\\", "/"):gsub("^" .. git_root:gsub("\\", "/") .. "/", "")
+	local cwd = vim.fn.getcwd()
+	local filename = vim.fn.expand("%:p"):gsub("\\", "/"):gsub("^" .. cwd:gsub("\\", "/") .. "/", "")
 
 	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
 	if vim.v.shell_error ~= 0 or relative_filename == "" then
