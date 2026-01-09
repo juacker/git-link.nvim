@@ -1,33 +1,56 @@
 local config = require("git-link.config")
 
+-- Cache OS detection at module load time
+local os_name = jit and jit.os or ""
+
 local function copy_to_clipboard(text)
 	vim.fn.setreg("+", text)
 	vim.notify("Git URL copied to clipboard", vim.log.levels.INFO)
 end
 
 local function open_url_in_browser(url)
-	local os_name = jit and jit.os or ""
-
 	local command
 	if os_name == "Windows" then
-		command = string.format('start "" "%s"', url) -- Windows
+		command = string.format('start "" "%s"', url)
 	elseif os_name == "OSX" then
-		command = string.format("open %s", url) -- macOS
+		command = string.format("open %s", url)
 	elseif os_name == "Linux" then
-		command = string.format("xdg-open %s", url) -- Linux
+		command = string.format("xdg-open %s", url)
 	else
-		vim.notify("Unsupported OS: Unable to open URL in browser", vim.log.levels.ERROR)
+		vim.notify(
+			string.format("Unsupported OS '%s': Unable to open URL in browser", os_name ~= "" and os_name or "unknown"),
+			vim.log.levels.ERROR
+		)
+		return
+	end
+
+	local job_id = vim.fn.jobstart(command, {
+		detach = true,
+		on_exit = function(_, exit_code)
+			if exit_code ~= 0 then
+				vim.schedule(function()
+					vim.notify(
+						string.format("Failed to open browser (exit code %d). URL: %s", exit_code, url),
+						vim.log.levels.WARN
+					)
+				end)
+			end
+		end,
+	})
+
+	if job_id <= 0 then
+		vim.notify(
+			string.format("Failed to start browser command: %s", command),
+			vim.log.levels.ERROR
+		)
 		return
 	end
 
 	vim.notify("Opening git URL in browser", vim.log.levels.INFO)
-	vim.fn.jobstart(command, { detach = true })
 end
 
 local function get_current_branch()
-	local os_name = jit and jit.os or ""
 	local command
-
 	if os_name == "Windows" then
 		command = "git rev-parse --abbrev-ref @{u} 2>NUL"
 	else
@@ -36,7 +59,7 @@ local function get_current_branch()
 
 	local output = vim.fn.system(command)
 	if vim.v.shell_error ~= 0 then
-		vim.notify("Could not determine current branch", vim.log.levels.WARN)
+		vim.notify("Could not determine upstream branch (no tracking branch set?), falling back to 'master'", vim.log.levels.WARN)
 		return "master"
 	end
 
@@ -48,7 +71,7 @@ end
 local function get_remote_url()
 	local remote_url = vim.fn.trim(vim.fn.system("git config --get remote.origin.url"))
 	if vim.v.shell_error ~= 0 then
-		vim.notify("Not a git repository or no remote 'origin' found", vim.log.levels.ERROR)
+		vim.notify("No remote 'origin' found. Run 'git remote -v' to check configured remotes", vim.log.levels.ERROR)
 		return nil
 	end
 
@@ -83,7 +106,7 @@ local function get_url()
 	-- Call to git rev-parse as a way to ensure this is a valid git repo
 	vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
 	if vim.v.shell_error ~= 0 then
-		vim.notify("Not a git repository", vim.log.levels.ERROR)
+		vim.notify("Current directory is not inside a git repository", vim.log.levels.ERROR)
 		return nil
 	end
 
@@ -92,7 +115,7 @@ local function get_url()
 
 	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
 	if vim.v.shell_error ~= 0 or relative_filename == "" then
-		vim.notify("File is not tracked by git", vim.log.levels.ERROR)
+		vim.notify(string.format("File '%s' is not tracked by git", filename), vim.log.levels.ERROR)
 		return nil
 	end
 
