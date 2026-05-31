@@ -6,6 +6,7 @@
 
 - **Get a sharable URL**: Easily generate a link to the line of code under your cursor, ready to share. You can also share a link to a line range, if you select a visual block.
 - **Open in Browser**: Instantly open the browser and navigate to the specific line of code under your cursor.
+- **Permalinks**: Copy or open a SHA-pinned link when your current `HEAD` is present on the remote.
 - **Configurable URL Rules**: Support for custom Git hosting platforms through configurable URL rewriting rules.
 
 ## Installation and Configuration
@@ -14,6 +15,8 @@ This plugin does not set any default keymaps, however, in the following examples
 
 - `<leader>gu`: Copies the URL of the line of code under your cursor to your clipboard.
 - `<leader>go`: Opens the browser and navigates directly to the line of code under your cursor.
+- `<leader>gp`: Copies a permalink for the line of code under your cursor to your clipboard.
+- `<leader>gP`: Opens a permalink for the line of code under your cursor in your browser.
 
 Below are examples for different setups:
 
@@ -35,6 +38,18 @@ Below are examples for different setups:
       desc = "Open code link in browser",
       mode = { "n", "x" }
     },
+    {
+      "<leader>gp",
+      function() require("git-link.main").copy_permalink() end,
+      desc = "Copy code permalink to clipboard",
+      mode = { "n", "x" }
+    },
+    {
+      "<leader>gP",
+      function() require("git-link.main").open_permalink() end,
+      desc = "Open code permalink in browser",
+      mode = { "n", "x" }
+    },
   },
 }
 ```
@@ -48,8 +63,12 @@ use {
     -- Set up your keymaps
     vim.keymap.set('n', '<leader>gu', function() require("git-link.main").copy_line_url() end)
     vim.keymap.set('n', '<leader>go', function() require("git-link.main").open_line_url() end)
+    vim.keymap.set('n', '<leader>gp', function() require("git-link.main").copy_permalink() end)
+    vim.keymap.set('n', '<leader>gP', function() require("git-link.main").open_permalink() end)
     vim.keymap.set('x', '<leader>gu', function() require("git-link.main").copy_line_url() end)
     vim.keymap.set('x', '<leader>go', function() require("git-link.main").open_line_url() end)
+    vim.keymap.set('x', '<leader>gp', function() require("git-link.main").copy_permalink() end)
+    vim.keymap.set('x', '<leader>gP', function() require("git-link.main").open_permalink() end)
   end
 }
 ```
@@ -60,9 +79,19 @@ use {
 -- In your init.lua
 vim.keymap.set('n', '<leader>gu', function() require("git-link.main").copy_line_url() end)
 vim.keymap.set('n', '<leader>go', function() require("git-link.main").open_line_url() end)
+vim.keymap.set('n', '<leader>gp', function() require("git-link.main").copy_permalink() end)
+vim.keymap.set('n', '<leader>gP', function() require("git-link.main").open_permalink() end)
 vim.keymap.set('x', '<leader>gu', function() require("git-link.main").copy_line_url() end)
 vim.keymap.set('x', '<leader>go', function() require("git-link.main").open_line_url() end)
+vim.keymap.set('x', '<leader>gp', function() require("git-link.main").copy_permalink() end)
+vim.keymap.set('x', '<leader>gP', function() require("git-link.main").open_permalink() end)
 ```
+
+### Link Refs
+
+`copy_line_url()` and `open_line_url()` use a branch name from `origin`. If your local branch has unpushed commits, the plugin chooses the closest branch on `origin` that shares history with `HEAD`, preferring the current branch's upstream, then `origin/HEAD`, then any other matching remote branch.
+
+`copy_permalink()` and `open_permalink()` use the full `HEAD` SHA. They only work when `HEAD` is present on `origin`; otherwise the plugin reports an error instead of creating a link to a commit the remote may not resolve.
 
 ### Default URL Rules
 
@@ -82,7 +111,9 @@ You can add custom URL rules to support different Git hosting platforms. Each ru
 - `format_url`: A function that generates the final browser URL using:
   - `base_url`: The resulting URL after replacing the pattern
   - `params`: A table containing:
-    - `branch`: Current git branch
+    - `branch`: Selected branch name, or the commit SHA for permalink calls
+    - `ref`: Same value as `branch`
+    - `permalink`: Boolean indicating whether the caller requested a permalink
     - `file_path`: Path to the file
     - `start_line`: Starting line number
     - `end_line`: Ending line number (same as start_line for single line links)

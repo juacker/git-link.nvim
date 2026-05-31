@@ -1,4 +1,5 @@
 local git_link = require("git-link")
+local main = require("git-link.main")
 local config = require("git-link.config")
 
 describe("git-link", function()
@@ -17,6 +18,14 @@ describe("git-link", function()
 
 		it("should export open_line_url function", function()
 			assert.is_function(git_link.open_line_url)
+		end)
+
+		it("should export copy_permalink function", function()
+			assert.is_function(git_link.copy_permalink)
+		end)
+
+		it("should export open_permalink function", function()
+			assert.is_function(git_link.open_permalink)
 		end)
 	end)
 
@@ -72,6 +81,128 @@ describe("git-link", function()
 				git_link.copy_line_url()
 			end)
 		end)
+	end)
+end)
+
+describe("remote ref selection", function()
+	local original_dir
+	local temp_dirs
+
+	local function run(command, cwd)
+		local previous_dir = vim.fn.getcwd()
+		if cwd then
+			vim.cmd("cd " .. vim.fn.fnameescape(cwd))
+		end
+
+		local output = vim.fn.system(command)
+		local exit_code = vim.v.shell_error
+
+		if cwd then
+			vim.cmd("cd " .. vim.fn.fnameescape(previous_dir))
+		end
+
+		assert.equals(0, exit_code, "Command failed: " .. command .. "\n" .. output)
+		return vim.fn.trim(output)
+	end
+
+	local function create_repo()
+		local root = vim.fn.tempname()
+		local origin = root .. "/origin.git"
+		local worktree = root .. "/worktree"
+
+		vim.fn.mkdir(root, "p")
+		table.insert(temp_dirs, root)
+
+		run("git init --bare " .. vim.fn.shellescape(origin))
+		run("git init " .. vim.fn.shellescape(worktree))
+		run("git config user.email test@example.com", worktree)
+		run("git config user.name Tester", worktree)
+
+		vim.fn.writefile({ "line one" }, worktree .. "/file.lua")
+		run("git add file.lua", worktree)
+		run("git commit -m initial", worktree)
+		run("git branch -M main", worktree)
+		run("git remote add origin " .. vim.fn.shellescape(origin), worktree)
+		run("git push -u origin main", worktree)
+		run("git remote set-head origin main", worktree)
+
+		return {
+			origin = origin,
+			worktree = worktree,
+		}
+	end
+
+	before_each(function()
+		original_dir = vim.fn.getcwd()
+		temp_dirs = {}
+	end)
+
+	after_each(function()
+		vim.cmd("cd " .. vim.fn.fnameescape(original_dir))
+		for _, temp_dir in ipairs(temp_dirs) do
+			vim.fn.delete(temp_dir, "rf")
+		end
+	end)
+
+	it("uses origin HEAD for an unpushed local branch off main", function()
+		local repo = create_repo()
+		run("git checkout -b feature/local", repo.worktree)
+		vim.fn.writefile({ "line one", "local change" }, repo.worktree .. "/file.lua")
+		run("git add file.lua", repo.worktree)
+		run("git commit -m local-change", repo.worktree)
+
+		vim.cmd("cd " .. vim.fn.fnameescape(repo.worktree))
+
+		assert.equals("main", main._private.get_current_branch("origin"))
+	end)
+
+	it("uses the closest remote branch for an unpushed local branch", function()
+		local repo = create_repo()
+		run("git checkout -b v1.2.x main", repo.worktree)
+		vim.fn.writefile({ "line one", "release change" }, repo.worktree .. "/file.lua")
+		run("git add file.lua", repo.worktree)
+		run("git commit -m release-change", repo.worktree)
+		run("git push -u origin v1.2.x", repo.worktree)
+
+		run("git checkout -b hotfix/local", repo.worktree)
+		vim.fn.writefile({ "line one", "release change", "hotfix change" }, repo.worktree .. "/file.lua")
+		run("git add file.lua", repo.worktree)
+		run("git commit -m hotfix-change", repo.worktree)
+
+		vim.cmd("cd " .. vim.fn.fnameescape(repo.worktree))
+
+		assert.equals("v1.2.x", main._private.get_current_branch("origin"))
+	end)
+
+	it("prefers the current branch upstream when remote refs tie", function()
+		local repo = create_repo()
+		run("git checkout -b tracked main", repo.worktree)
+		run("git push -u origin tracked", repo.worktree)
+
+		vim.cmd("cd " .. vim.fn.fnameescape(repo.worktree))
+
+		assert.equals("tracked", main._private.get_current_branch("origin"))
+	end)
+
+	it("returns HEAD sha for permalinks when HEAD is on origin", function()
+		local repo = create_repo()
+		local head_sha = run("git rev-parse HEAD", repo.worktree)
+
+		vim.cmd("cd " .. vim.fn.fnameescape(repo.worktree))
+
+		assert.equals(head_sha, main._private.get_permalink_ref("origin"))
+	end)
+
+	it("does not return a permalink ref when HEAD is not on origin", function()
+		local repo = create_repo()
+		run("git checkout -b feature/local", repo.worktree)
+		vim.fn.writefile({ "line one", "local change" }, repo.worktree .. "/file.lua")
+		run("git add file.lua", repo.worktree)
+		run("git commit -m local-change", repo.worktree)
+
+		vim.cmd("cd " .. vim.fn.fnameescape(repo.worktree))
+
+		assert.is_nil(main._private.get_permalink_ref("origin"))
 	end)
 end)
 
