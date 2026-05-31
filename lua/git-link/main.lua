@@ -3,6 +3,33 @@ local config = require("git-link.config")
 -- Cache OS detection at module load time
 local os_name = jit and jit.os or ""
 
+local function redirect_stderr_to_null(command)
+	if os_name == "Windows" then
+		return command .. " 2>NUL"
+	end
+	return command .. " 2>/dev/null"
+end
+
+local function shellescape(value)
+	return vim.fn.shellescape(value)
+end
+
+local function git_output(command)
+	local output = vim.fn.system(redirect_stderr_to_null("git " .. command))
+	if vim.v.shell_error ~= 0 then
+		return nil
+	end
+	return vim.fn.trim(output)
+end
+
+local function git_output_lines(command)
+	local output = vim.fn.systemlist(redirect_stderr_to_null("git " .. command))
+	if vim.v.shell_error ~= 0 then
+		return nil
+	end
+	return output
+end
+
 local function copy_to_clipboard(text)
 	vim.fn.setreg("+", text)
 	vim.notify("Git URL copied to clipboard", vim.log.levels.INFO)
@@ -39,39 +66,172 @@ local function open_url_in_browser(url)
 	})
 
 	if job_id <= 0 then
-		vim.notify(
-			string.format("Failed to start browser command: %s", command),
-			vim.log.levels.ERROR
-		)
+		vim.notify(string.format("Failed to start browser command: %s", command), vim.log.levels.ERROR)
 		return
 	end
 
 	vim.notify("Opening git URL in browser", vim.log.levels.INFO)
 end
 
-local function get_current_branch()
-	local command
-	if os_name == "Windows" then
-		command = "git rev-parse --abbrev-ref @{u} 2>NUL"
-	else
-		command = "git rev-parse --abbrev-ref @{u} 2>/dev/null"
-	end
-
-	local output = vim.fn.system(command)
-	if vim.v.shell_error ~= 0 then
-		vim.notify("Could not determine upstream branch (no tracking branch set?), falling back to 'master'", vim.log.levels.WARN)
-		return "master"
-	end
-
-	local branch = vim.fn.trim(output)
-	local _, branch_name = branch:match("^([^/]+)/(.+)$")
-	return branch_name or "master"
+local function remote_ref_prefix(remote_name)
+	return "refs/remotes/" .. remote_name .. "/"
 end
 
-local function get_remote_url()
-	local remote_url = vim.fn.trim(vim.fn.system("git config --get remote.origin.url"))
-	if vim.v.shell_error ~= 0 then
-		vim.notify("No remote 'origin' found. Run 'git remote -v' to check configured remotes", vim.log.levels.ERROR)
+local function is_remote_ref(remote_ref, remote_name)
+	local prefix = remote_ref_prefix(remote_name)
+	return remote_ref:sub(1, #prefix) == prefix
+end
+
+local function get_upstream_ref(remote_name)
+	local upstream_ref = git_output("rev-parse --symbolic-full-name @{u}")
+	if not upstream_ref or upstream_ref == "" or not is_remote_ref(upstream_ref, remote_name) then
+		return nil
+	end
+	return upstream_ref
+end
+
+local function get_remote_head_target(remote_name)
+	return git_output("symbolic-ref --quiet " .. shellescape(remote_ref_prefix(remote_name) .. "HEAD"))
+end
+
+local function list_remote_refs(remote_name)
+	local refs = git_output_lines(
+		string.format('for-each-ref --format="%%(refname)" %s', shellescape("refs/remotes/" .. remote_name))
+	)
+	if not refs then
+		return {}
+	end
+
+	local unique_refs = {}
+	local seen = {}
+	for _, remote_ref in ipairs(refs) do
+		remote_ref = vim.fn.trim(remote_ref)
+		if remote_ref ~= "" and not seen[remote_ref] then
+			seen[remote_ref] = true
+			table.insert(unique_refs, remote_ref)
+		end
+	end
+	return unique_refs
+end
+
+local function remote_ref_priority(remote_ref, upstream_ref, remote_head_ref, remote_head_target)
+	if upstream_ref and remote_ref == upstream_ref then
+		return 1
+	end
+	if remote_ref == remote_head_ref or (remote_head_target and remote_ref == remote_head_target) then
+		return 2
+	end
+	return 3
+end
+
+local function score_remote_ref(remote_ref, upstream_ref, remote_head_ref, remote_head_target)
+	local merge_base = git_output("merge-base HEAD " .. shellescape(remote_ref))
+	if not merge_base or merge_base == "" then
+		return nil
+	end
+
+	local distance_output = git_output("rev-list --count " .. shellescape(merge_base .. "..HEAD"))
+	local distance = tonumber(distance_output)
+	if not distance then
+		return nil
+	end
+
+	return {
+		ref = remote_ref,
+		distance = distance,
+		priority = remote_ref_priority(remote_ref, upstream_ref, remote_head_ref, remote_head_target),
+	}
+end
+
+local function is_better_remote_ref(candidate, current)
+	if not current then
+		return true
+	end
+	if candidate.distance ~= current.distance then
+		return candidate.distance < current.distance
+	end
+	if candidate.priority ~= current.priority then
+		return candidate.priority < current.priority
+	end
+	return candidate.ref < current.ref
+end
+
+local function get_closest_remote_ref(remote_name)
+	local upstream_ref = get_upstream_ref(remote_name)
+	local remote_head_ref = remote_ref_prefix(remote_name) .. "HEAD"
+	local remote_head_target = get_remote_head_target(remote_name)
+	local best
+
+	for _, remote_ref in ipairs(list_remote_refs(remote_name)) do
+		local candidate = score_remote_ref(remote_ref, upstream_ref, remote_head_ref, remote_head_target)
+		if candidate and is_better_remote_ref(candidate, best) then
+			best = candidate
+		end
+	end
+
+	return best and best.ref or nil
+end
+
+local function remote_ref_to_branch(remote_ref, remote_name)
+	local prefix = remote_ref_prefix(remote_name)
+	if remote_ref == prefix .. "HEAD" then
+		remote_ref = get_remote_head_target(remote_name) or remote_ref
+	end
+	if not is_remote_ref(remote_ref, remote_name) then
+		return nil
+	end
+	return remote_ref:sub(#prefix + 1)
+end
+
+local function get_current_branch(remote_name)
+	local remote_ref = get_closest_remote_ref(remote_name)
+	if not remote_ref then
+		vim.notify(
+			string.format("Could not determine a branch on remote '%s' that shares history with HEAD", remote_name),
+			vim.log.levels.ERROR
+		)
+		return nil
+	end
+
+	local branch = remote_ref_to_branch(remote_ref, remote_name)
+	if not branch or branch == "" or branch == "HEAD" then
+		vim.notify(string.format("Could not resolve remote '%s' HEAD to a branch", remote_name), vim.log.levels.ERROR)
+		return nil
+	end
+
+	return branch
+end
+
+local function get_permalink_ref(remote_name)
+	local refs = git_output_lines(
+		string.format(
+			'for-each-ref --contains HEAD --format="%%(refname)" %s',
+			shellescape("refs/remotes/" .. remote_name)
+		)
+	)
+	if refs then
+		for _, remote_ref in ipairs(refs) do
+			if vim.fn.trim(remote_ref) ~= "" then
+				return git_output("rev-parse HEAD")
+			end
+		end
+	end
+
+	vim.notify(
+		string.format("HEAD is not present on remote '%s'. Push or fetch before creating a permalink", remote_name),
+		vim.log.levels.ERROR
+	)
+	return nil
+end
+
+local function get_remote_url(remote_name)
+	remote_name = remote_name or "origin"
+	local remote_url = git_output("config --get " .. shellescape("remote." .. remote_name .. ".url"))
+	if not remote_url or remote_url == "" then
+		vim.notify(
+			string.format("No remote '%s' found. Run 'git remote -v' to check configured remotes", remote_name),
+			vim.log.levels.ERROR
+		)
 		return nil
 	end
 
@@ -81,7 +241,7 @@ local function get_remote_url()
 	for _, rule in ipairs(rules) do
 		if remote_url:match(rule.pattern) then
 			local final_url = remote_url:gsub(rule.pattern, rule.replace):gsub("%.git$", "")
-			return final_url, rule.format_url
+			return final_url, rule.format_url, remote_name
 		end
 	end
 
@@ -102,10 +262,11 @@ local function get_line_range()
 	return current[2], current[2]
 end
 
-local function get_url()
+local function get_url(opts)
+	opts = opts or {}
+
 	-- Call to git rev-parse as a way to ensure this is a valid git repo
-	vim.fn.trim(vim.fn.system("git rev-parse --show-toplevel"))
-	if vim.v.shell_error ~= 0 then
+	if not git_output("rev-parse --show-toplevel") then
 		vim.notify("Current directory is not inside a git repository", vim.log.levels.ERROR)
 		return nil
 	end
@@ -113,22 +274,33 @@ local function get_url()
 	local cwd = vim.fn.getcwd()
 	local filename = vim.fn.expand("%:p"):gsub("\\", "/"):gsub("^" .. cwd:gsub("\\", "/") .. "/", "")
 
-	local relative_filename = vim.fn.trim(vim.fn.system("git ls-files --full-name " .. filename))
-	if vim.v.shell_error ~= 0 or relative_filename == "" then
+	local relative_filename = git_output("ls-files --full-name " .. shellescape(filename))
+	if not relative_filename or relative_filename == "" then
 		vim.notify(string.format("File '%s' is not tracked by git", filename), vim.log.levels.ERROR)
 		return nil
 	end
 
-	local remote_url, format_url = get_remote_url()
-	if not remote_url or not format_url then
+	local remote_url, format_url, remote_name = get_remote_url()
+	if not remote_url or not format_url or not remote_name then
 		return nil
 	end
 
-	local branch = get_current_branch()
+	local ref
+	if opts.permalink then
+		ref = get_permalink_ref(remote_name)
+	else
+		ref = get_current_branch(remote_name)
+	end
+	if not ref then
+		return nil
+	end
+
 	local start_line, end_line = get_line_range()
 
 	local params = {
-		branch = branch,
+		branch = ref,
+		ref = ref,
+		permalink = opts.permalink == true,
 		file_path = relative_filename,
 		start_line = start_line,
 		end_line = end_line,
@@ -150,7 +322,29 @@ local function open_line_url()
 	end
 end
 
+local function copy_permalink()
+	local url = get_url({ permalink = true })
+	if url then
+		copy_to_clipboard(url)
+	end
+end
+
+local function open_permalink()
+	local url = get_url({ permalink = true })
+	if url then
+		open_url_in_browser(url)
+	end
+end
+
 return {
 	copy_line_url = copy_line_url,
 	open_line_url = open_line_url,
+	copy_permalink = copy_permalink,
+	open_permalink = open_permalink,
+	_private = {
+		get_closest_remote_ref = get_closest_remote_ref,
+		get_current_branch = get_current_branch,
+		get_permalink_ref = get_permalink_ref,
+		remote_ref_to_branch = remote_ref_to_branch,
+	},
 }
