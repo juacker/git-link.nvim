@@ -94,9 +94,13 @@ local function get_remote_head_target(remote_name)
 	return git_output("symbolic-ref --quiet " .. shellescape(remote_ref_prefix(remote_name) .. "HEAD"))
 end
 
-local function list_remote_refs(remote_name)
+local function remote_refs_containing_commit(remote_name, commit)
 	local refs = git_output_lines(
-		string.format('for-each-ref --format="%%(refname)" %s', shellescape("refs/remotes/" .. remote_name))
+		string.format(
+			'for-each-ref --contains=%s --format="%%(refname)" %s',
+			shellescape(commit),
+			shellescape("refs/remotes/" .. remote_name)
+		)
 	)
 	if not refs then
 		return {}
@@ -124,23 +128,28 @@ local function remote_ref_priority(remote_ref, upstream_ref, remote_head_ref, re
 	return 3
 end
 
-local function score_remote_ref(remote_ref, upstream_ref, remote_head_ref, remote_head_target)
-	local merge_base = git_output("merge-base HEAD " .. shellescape(remote_ref))
-	if not merge_base or merge_base == "" then
-		return nil
+local function best_remote_candidate_from_refs(refs, remote_name, upstream_ref, remote_head_ref, remote_head_target, distance)
+	local best
+
+	for _, remote_ref in ipairs(refs) do
+		remote_ref = vim.fn.trim(remote_ref)
+		if is_remote_ref(remote_ref, remote_name) then
+			local candidate = {
+				ref = remote_ref,
+				distance = distance,
+				priority = remote_ref_priority(remote_ref, upstream_ref, remote_head_ref, remote_head_target),
+			}
+			if
+				not best
+				or candidate.priority < best.priority
+				or (candidate.priority == best.priority and candidate.ref < best.ref)
+			then
+				best = candidate
+			end
+		end
 	end
 
-	local distance_output = git_output("rev-list --count " .. shellescape(merge_base .. "..HEAD"))
-	local distance = tonumber(distance_output)
-	if not distance then
-		return nil
-	end
-
-	return {
-		ref = remote_ref,
-		distance = distance,
-		priority = remote_ref_priority(remote_ref, upstream_ref, remote_head_ref, remote_head_target),
-	}
+	return best
 end
 
 local function is_better_remote_ref(candidate, current)
@@ -156,20 +165,53 @@ local function is_better_remote_ref(candidate, current)
 	return candidate.ref < current.ref
 end
 
-local function get_closest_remote_ref(remote_name)
-	local upstream_ref = get_upstream_ref(remote_name)
-	local remote_head_ref = remote_ref_prefix(remote_name) .. "HEAD"
-	local remote_head_target = get_remote_head_target(remote_name)
-	local best
+local function get_best_remote_ref_containing_commit(remote_name, commit, distance, upstream_ref, remote_head_ref, remote_head_target)
+	local refs = remote_refs_containing_commit(remote_name, commit)
+	return best_remote_candidate_from_refs(refs, remote_name, upstream_ref, remote_head_ref, remote_head_target, distance)
+end
 
-	for _, remote_ref in ipairs(list_remote_refs(remote_name)) do
-		local candidate = score_remote_ref(remote_ref, upstream_ref, remote_head_ref, remote_head_target)
-		if candidate and is_better_remote_ref(candidate, best) then
-			best = candidate
+local function get_remote_boundary_ref(remote_name, upstream_ref, remote_head_ref, remote_head_target)
+	local commits = git_output_lines("rev-list --boundary HEAD --not " .. shellescape("--remotes=" .. remote_name))
+	if not commits then
+		return nil
+	end
+
+	local best
+	for _, commit in ipairs(commits) do
+		if commit:sub(1, 1) == "-" then
+			local boundary_commit = commit:sub(2)
+			local distance = tonumber(git_output("rev-list --count " .. shellescape(boundary_commit .. "..HEAD")))
+			if distance then
+				local candidate = get_best_remote_ref_containing_commit(
+					remote_name,
+					boundary_commit,
+					distance,
+					upstream_ref,
+					remote_head_ref,
+					remote_head_target
+				)
+				if candidate and is_better_remote_ref(candidate, best) then
+					best = candidate
+				end
+			end
 		end
 	end
 
 	return best and best.ref or nil
+end
+
+local function get_closest_remote_ref(remote_name)
+	local upstream_ref = get_upstream_ref(remote_name)
+	local remote_head_ref = remote_ref_prefix(remote_name) .. "HEAD"
+	local remote_head_target = get_remote_head_target(remote_name)
+
+	local containing_head =
+		get_best_remote_ref_containing_commit(remote_name, "HEAD", 0, upstream_ref, remote_head_ref, remote_head_target)
+	if containing_head then
+		return containing_head.ref
+	end
+
+	return get_remote_boundary_ref(remote_name, upstream_ref, remote_head_ref, remote_head_target)
 end
 
 local function remote_ref_to_branch(remote_ref, remote_name)
